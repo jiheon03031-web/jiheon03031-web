@@ -18,6 +18,7 @@
   --gold:rgba(255,205,90,.34); --gold-edge:rgba(228,178,66,.55); --gold-hi:rgba(255,238,175,.80); --gold-txt:#b7861f;
   --silver:rgba(196,203,216,.42); --silver-edge:rgba(150,162,180,.60); --silver-hi:rgba(255,255,255,.85); --silver-txt:#727c8e;
   --bronze:rgba(226,160,108,.34); --bronze-edge:rgba(200,130,80,.55); --bronze-hi:rgba(255,226,198,.75); --bronze-txt:#a5663a;
+  --bg-dim:0.88;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
@@ -29,7 +30,9 @@
   --gold:rgba(205,150,40,.30); --gold-edge:rgba(240,200,110,.45); --gold-hi:rgba(255,230,150,.35); --gold-txt:#f0cc72;
   --silver:rgba(190,198,212,.22); --silver-edge:rgba(220,226,238,.40); --silver-hi:rgba(255,255,255,.28); --silver-txt:#cbd3e0;
   --bronze:rgba(200,130,80,.28); --bronze-edge:rgba(235,170,120,.42); --bronze-hi:rgba(255,210,170,.30); --bronze-txt:#e6a878;
+  --bg-dim:0.55;
   }
+  :root:not([data-theme="light"]) body.has-bg-photo{ --glass:rgba(40,40,46,.16); --glass-edge:rgba(255,255,255,.06); --glass-blur:12px; }
 }
 :root[data-theme="dark"]{
   --bg:#111113; --text:#f2f2f7; --sub:#98989f;
@@ -40,10 +43,13 @@
   --gold:rgba(205,150,40,.30); --gold-edge:rgba(240,200,110,.45); --gold-hi:rgba(255,230,150,.35); --gold-txt:#f0cc72;
   --silver:rgba(190,198,212,.22); --silver-edge:rgba(220,226,238,.40); --silver-hi:rgba(255,255,255,.28); --silver-txt:#cbd3e0;
   --bronze:rgba(200,130,80,.28); --bronze-edge:rgba(235,170,120,.42); --bronze-hi:rgba(255,210,170,.30); --bronze-txt:#e6a878;
+  --bg-dim:0.55;
 }
+:root[data-theme="dark"] body.has-bg-photo{ --glass:rgba(40,40,46,.16); --glass-edge:rgba(255,255,255,.06); --glass-blur:12px; }
 
 :root{ box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
-html{ scroll-padding-top:env(safe-area-inset-top,0px); -webkit-text-size-adjust:100%; }
+html{ scroll-padding-top:env(safe-area-inset-top,0px); -webkit-text-size-adjust:100%; background:var(--bg); }
+html.has-bg-photo{ background:var(--photo-bg, var(--bg)); }
 *,*::before,*::after{ box-sizing:inherit; -webkit-tap-highlight-color:transparent; }
 body{
   margin:0; min-height:100vh; background:var(--bg); color:var(--text);
@@ -51,6 +57,22 @@ body{
   -webkit-font-smoothing:antialiased;
 }
 /* soft blurred shapes behind the glass so the blur has something to show */
+.bg-layer{
+  position:fixed; inset:0; z-index:-1; background-size:cover; background-position:center;
+  opacity:0; filter:brightness(var(--bg-dim));
+  transition:opacity .35s ease;
+}
+.bg-layer.on{ opacity:1; }
+/* 배경 사진이 있을 때: 스크롤 바운스 때 보이는 여백을 사진의 평균 색으로 채우고, 글래스 버튼·카드는 더 투명하게 */
+body.has-bg-photo{ background:transparent; --glass:rgba(255,255,255,.14); --glass-edge:rgba(255,255,255,.40); --glass-blur:12px; }
+
+/* 배경 사진 위치 조정 창 */
+.bgpos-bg{ position:fixed; inset:0; z-index:12; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:20px; background:rgba(0,0,0,.6); }
+.bgpos-box{ width:100%; max-width:380px; aspect-ratio:9/17; max-height:64vh; border-radius:28px; background-size:cover; touch-action:none; -webkit-user-select:none; user-select:none; box-shadow:0 0 0 1px rgba(255,255,255,.25); }
+.bgpos-hint{ color:rgba(255,255,255,.85); font-size:13px; text-align:center; }
+.bgpos-btns{ display:flex; gap:10px; width:100%; max-width:380px; }
+.bgpos-btns button{ flex:1; height:50px; border-radius:16px; font-size:16px; font-weight:600; background:rgba(255,255,255,.16); color:#fff; }
+.bgpos-btns button.primary{ background:var(--green); }
 body::before{
   content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
   background:
@@ -68,7 +90,7 @@ button{ font:inherit; color:inherit; border:0; background:none; padding:0; margi
 /* glass surface */
 .glass{
   background:var(--glass);
-  -webkit-backdrop-filter:blur(24px) saturate(180%); backdrop-filter:blur(24px) saturate(180%);
+  -webkit-backdrop-filter:blur(var(--glass-blur,24px)) saturate(180%); backdrop-filter:blur(var(--glass-blur,24px)) saturate(180%);
   border:1px solid var(--glass-edge);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.35);
   transition:background .3s ease, border-color .3s ease, transform .15s ease, opacity .15s ease;
@@ -247,6 +269,7 @@ body{ overflow-x:hidden; }
 </style>
 </head>
 <body>
+<div id="bgLayer" class="bg-layer"></div>
 <div id="app"></div>
 
 <script>
@@ -325,6 +348,12 @@ function getGrad(brandId){
     lastThemeId:r.lastThemeId || '', lastNote:r.lastNote || '' };
 }
 function setGrad(brandId, patch){ return setRecord('grad', brandId, patch); }
+/* 업체 배경 사진의 위치(%)와 대표 색도 같은 방식으로 저장합니다 */
+function getBg(brandId){
+  const r = getRecord('bg', brandId);
+  return { posX: r.posX == null ? 50 : r.posX, posY: r.posY == null ? 50 : r.posY, dominantColor: r.dominantColor || '' };
+}
+function setBg(brandId, patch){ return setRecord('bg', brandId, patch); }
 const GRAD_SLOTS = [ { key:'first', label:'처음 플레이한 테마' }, { key:'best', label:'가장 좋았던 테마' }, { key:'last', label:'마지막 테마' } ];
 const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
@@ -487,7 +516,7 @@ function brandView(brand){
         return '<button class="glass press item' + (done ? ' done' : '') + '" data-theme="' + esc(t.id) + '">' + esc(t.name) + '</button>';
       }).join('')
     : '<div class="glass empty">등록된 테마가 없어요<br>오른쪽 위 + 버튼으로 추가해 보세요</div>';
-  return nav('', plusBtn('add-theme', '테마 추가')) + '<h1 class="page-title">' + esc(brand.name) + '</h1><div class="list">' + gradBtn + items + '</div>';
+  return nav('', plusBtn('brand-plus', '추가')) + '<h1 class="page-title">' + esc(brand.name) + '</h1><div class="list">' + gradBtn + items + '</div>';
 }
 
 /* 별 표시: 0.5점 단위. 별마다 왼쪽 0 / 절반 / 전체를 잘라서 칠합니다 */
@@ -548,8 +577,31 @@ function render(isBack, still){
   app.innerHTML = '<div class="view' + (isBack ? ' back' : '') + (still ? ' still' : '') + '">' + html + '</div>';
   if (!still) window.scrollTo(0, 0);
   document.querySelectorAll('.autosize').forEach(autosizeEl);
+  updateBgLayer();
 }
 function autosizeEl(el){ el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+
+/* 업체 테마 목록 화면의 배경 사진: 등록돼 있으면 은은하게 블러 처리해 보여줍니다 */
+function updateBgLayer(){
+  const cur = stack[stack.length - 1];
+  const layer = document.getElementById('bgLayer');
+  if (!layer) return;
+  const img = cur.view === 'brand' ? (posterCache['bg/' + cur.brand] || '') : '';
+  if (img) {
+    const bg = getBg(cur.brand);
+    layer.style.backgroundImage = 'url(' + img + ')';
+    layer.style.backgroundPosition = bg.posX + '% ' + bg.posY + '%';
+    layer.classList.add('on');
+    document.documentElement.style.setProperty('--photo-bg', bg.dominantColor || '');
+    document.documentElement.classList.add('has-bg-photo');
+    document.body.classList.add('has-bg-photo');
+  } else {
+    layer.classList.remove('on');
+    layer.style.backgroundImage = '';
+    document.documentElement.classList.remove('has-bg-photo');
+    document.body.classList.remove('has-bg-photo');
+  }
+}
 
 /* ============================================================
    EVENTS (한 곳에서 처리)
@@ -567,7 +619,7 @@ app.addEventListener('click', function(e){
     { label:'불러오기', fn:openImport },
     { label:'닫기' }
   ]);
-  if (t.dataset.act === 'add-theme') return openSheet('테마 추가', '테마 이름', function(name){ addTheme(cur, name); });
+  if (t.dataset.act === 'brand-plus') return openBrandPlusMenu(cur.brand);
   if (t.dataset.act === 'menu') return openDrawer();
   if (t.dataset.act === 'rate') return openRating(cur.brand, cur.theme);
   if (t.dataset.act === 'graderate') return openGradRating(cur.brand);
@@ -657,6 +709,106 @@ function openGradPick(brandId, slotKey){
   openMenu(cfg.label + ' 선택', actions);
 }
 
+/* 테마 목록의 + 버튼: 테마 추가 / 이 업체 페이지의 배경 사진 */
+function openBrandPlusMenu(brandId){
+  const hasBg = !!posterCache['bg/' + brandId];
+  const actions = [
+    { label:'테마 추가', fn:function(){ openSheet('테마 추가', '테마 이름', function(name){ addTheme({ brand:brandId }, name); }); } },
+    { label: hasBg ? '배경 바꾸기' : '배경 넣기', fn:function(){ triggerBgPick(brandId); } },
+  ];
+  if (hasBg) actions.push({ label:'사진 위치 조정', fn:function(){ openBgPosition(brandId); } });
+  if (hasBg) actions.push({ label:'배경 삭제', danger:true, fn:function(){
+    removePoster('bg', brandId);
+    const cur = stack[stack.length - 1];
+    if (cur.view === 'brand' && cur.brand === brandId) updateBgLayer();
+  } });
+  actions.push({ label:'취소' });
+  openMenu('추가', actions);
+}
+
+/* 배경 사진 고르기: 임시 파일 입력을 하나 만들어 쓰고 바로 치웁니다 */
+function triggerBgPick(brandId){
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*'; input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', function(){
+    const file = input.files && input.files[0];
+    document.body.removeChild(input);
+    if (!file) return;
+    shrinkImage(file, function(data){
+      if (!data) return alert('사진을 불러오지 못했어요');
+      savePoster('bg', brandId, data, function(ok){
+        if (!ok) alert('저장 공간이 부족해서 이번에만 보여요');
+        extractAvgColor(data, function(color){
+          setBg(brandId, { posX:50, posY:50, dominantColor:color });
+          const cur = stack[stack.length - 1];
+          if (cur.view === 'brand' && cur.brand === brandId) { updateBgLayer(); openBgPosition(brandId); }
+        });
+      });
+    });
+  });
+  input.click();
+}
+
+/* 사진의 평균 색(여백을 채울 때 씀): 16x16으로 축소해 픽셀을 평균 냅니다 */
+function extractAvgColor(dataUrl, cb){
+  const img = new Image();
+  img.onload = function(){
+    try {
+      const c = document.createElement('canvas'); c.width = 16; c.height = 16;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0, 16, 16);
+      const d = ctx.getImageData(0, 0, 16, 16).data;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+      cb('rgb(' + Math.round(r / n) + ',' + Math.round(g / n) + ',' + Math.round(b / n) + ')');
+    } catch (e) { cb(''); }
+  };
+  img.onerror = function(){ cb(''); };
+  img.src = dataUrl;
+}
+
+/* 배경 사진 위치 조정: 미리보기를 손가락으로 끌어서 보여줄 부분을 고릅니다 */
+function openBgPosition(brandId){
+  const img = posterCache['bg/' + brandId];
+  if (!img) return;
+  let pos = getBg(brandId), down = false, lastX = 0, lastY = 0;
+  const el = document.createElement('div');
+  el.className = 'bgpos-bg';
+  el.innerHTML =
+    '<div class="bgpos-box" id="bgpBox" style="background-image:url(' + img + ');background-position:' + pos.posX + '% ' + pos.posY + '%;"></div>' +
+    '<p class="bgpos-hint">드래그해서 보여줄 부분을 맞춰보세요</p>' +
+    '<div class="bgpos-btns"><button class="press" data-r="cancel">취소</button><button class="press primary" data-r="done">완료</button></div>';
+  document.body.appendChild(el);
+  const box = el.querySelector('#bgpBox');
+  const setPos = function(x, y){
+    pos = { posX:Math.max(0, Math.min(100, x)), posY:Math.max(0, Math.min(100, y)), dominantColor:pos.dominantColor };
+    box.style.backgroundPosition = pos.posX + '% ' + pos.posY + '%';
+  };
+  box.addEventListener('pointerdown', function(e){ down = true; lastX = e.clientX; lastY = e.clientY; try { box.setPointerCapture(e.pointerId); } catch (err) {} });
+  box.addEventListener('pointermove', function(e){
+    if (!down) return;
+    const r = box.getBoundingClientRect();
+    const dx = (e.clientX - lastX) / r.width * 100, dy = (e.clientY - lastY) / r.height * 100;
+    lastX = e.clientX; lastY = e.clientY;
+    setPos(pos.posX - dx, pos.posY - dy);
+  });
+  const up = function(){ down = false; };
+  box.addEventListener('pointerup', up);
+  box.addEventListener('pointercancel', up);
+  el.addEventListener('click', function(e){
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.r === 'cancel') return el.remove();
+    if (b.dataset.r === 'done') {
+      setBg(brandId, { posX:pos.posX, posY:pos.posY });
+      el.remove();
+      const cur = stack[stack.length - 1];
+      if (cur.view === 'brand' && cur.brand === brandId) updateBgLayer();
+    }
+  });
+}
+
 function commit(){
   if (!saveData()) alert('저장 공간이 부족해서 이번에만 보여요');
   render(false, true);
@@ -681,6 +833,7 @@ function deleteItem(brand, theme){
     Object.keys(posterCache).forEach(function(k){ if (k.indexOf(brand.id + '/') === 0) dropPoster(k); });
     delete records['grad/' + brand.id];
     dropPoster('grad/' + brand.id);
+    dropPoster('bg/' + brand.id);
   }
   try { localStorage.setItem(STORE_KEY, JSON.stringify(records)); } catch (e) {}
   commit();
@@ -1064,4 +1217,3 @@ initPosters(function(){ render(false); });
 </script>
 </body>
 </html>
-
