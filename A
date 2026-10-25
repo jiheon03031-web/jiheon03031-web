@@ -173,6 +173,7 @@ textarea.autosize::placeholder{ color:var(--sub); }
 .sheet .note.err{ color:#ff453a; }
 body{ overflow-x:hidden; }
 
+
 /* 위쪽 바: 화면 전체 너비, 왼쪽 메뉴 / 오른쪽 버튼 */
 .topbar{ position:relative; display:flex; align-items:center; justify-content:space-between; width:100vw; left:50%; margin-left:-50vw; padding:12px 16px 8px; min-height:60px; }
 .tb-right{ display:flex; align-items:center; gap:8px; }
@@ -244,6 +245,31 @@ body{ overflow-x:hidden; }
 /* 별 (0.5점 단위): 뒤에 연한 별, 위에 진한 별을 왼쪽부터 잘라서 겹침 */
 .s1{ position:relative; display:inline-block; color:var(--off,var(--star-off)); }
 .s1 .f{ position:absolute; left:0; top:0; right:0; bottom:0; text-align:center; color:var(--on,var(--star-on)); transition:clip-path .12s ease, -webkit-clip-path .12s ease; }
+.date-dim{ position:fixed; inset:0; z-index:10; pointer-events:none; background:rgba(0,0,0,.22); animation:fade .2s ease; }
+.date-dim.out{ opacity:0; transition:opacity .2s ease; }
+.cal{ padding:14px 12px 12px; border-radius:26px; }
+.cal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.cal-head button{ height:40px; min-width:40px; font-size:24px; line-height:1; color:var(--text); }
+.cal-head .cal-ttl{ font-size:17px; font-weight:700; padding:0 10px; }
+.cal-ttl small{ font-size:13px; font-weight:500; color:var(--sub); }
+.cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); row-gap:2px; }
+.cal-grid.dow{ margin-bottom:4px; }
+.cal-grid.dow span{ text-align:center; font-size:12px; color:var(--sub); padding:4px 0; }
+.cal-grid .sun, .cd:nth-child(7n+1) .dn{ color:#ff6b61; }
+.cal-grid .sat, .cd:nth-child(7n) .dn{ color:#5b8def; }
+.cd{ display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:3px; aspect-ratio:1/1.05; padding-top:6px; border-radius:14px; font-size:15px; }
+.cd.blank{ pointer-events:none; }
+.cd .dots{ display:flex; gap:2px; height:6px; }
+.cd .dots i{ width:5px; height:5px; border-radius:50%; background:var(--green); }
+.cd.has .dn{ font-weight:700; }
+.cd.today .dn{ display:inline-flex; align-items:center; justify-content:center; min-width:24px; height:24px; margin-top:-3px; border-radius:12px; background:var(--poster); }
+.cd.sel{ background:var(--done); box-shadow:inset 0 0 0 1.5px var(--green); }
+.date-row{ display:flex; align-items:center; gap:2px; margin:-2px 0 2px 36px; }
+.date-wrap{ position:relative; display:inline-block; padding:4px 2px; font-size:13px; color:var(--sub); letter-spacing:.2px; }
+.date-wrap.empty{ opacity:.6; }
+.date-wrap input{ position:absolute; inset:0; width:100%; height:100%; opacity:0; border:0; padding:0; margin:0; font-size:16px; background:transparent; }
+.date-x{ width:26px; height:26px; font-size:16px; line-height:26px; color:var(--sub); opacity:.7; }
+.date-x[hidden]{ display:none; }
 .rate-btn{ display:flex; margin-left:-4px; }
 .rate-btn .s1{ display:block; width:32px; height:40px; text-align:center; font-size:26px; line-height:40px; }
 .lbl b.hint{ font-weight:400; font-size:12px; color:var(--sub); }
@@ -294,6 +320,7 @@ const BRANDS = [
 /* 테마별 개인 기록의 기본값 (확장하려면 항목만 추가) */
 const RECORD_DEFAULTS = {
   played:false,      // 플레이 완료
+  playDate:'',       // 플레이 날짜 'YYYY-MM-DD'
   difficulty:0,      // 별점 0~5
   poster:'',         // 내가 넣은 포스터 사진 (압축된 data URL)
   memo:'',           // 후기
@@ -409,12 +436,53 @@ function rankedThemes(){
   return list;
 }
 
+/* 캘린더: 플레이 날짜를 달력으로 보여줍니다. 날짜를 누르면 그날 플레이한 테마가 아래에 나와요 */
+function playsByDate(){
+  const m = {};
+  getBrands().forEach(function(b){ b.themes.forEach(function(t){
+    const d = getRecord(b.id, t.id).playDate;
+    if (d) (m[d] = m[d] || []).push({ b:b, t:t });
+  }); });
+  return m;
+}
+function calView(cur){
+  const today = todayStr();
+  if (!cur.ym) cur.ym = today.slice(0, 7);
+  const plays = playsByDate();
+  const y = Number(cur.ym.slice(0, 4)), mo = Number(cur.ym.slice(5, 7));
+  const first = new Date(y, mo - 1, 1).getDay(), days = new Date(y, mo, 0).getDate();
+  const p2 = x => String(x).padStart(2, '0');
+  let cells = '';
+  for (let i = 0; i < first; i++) cells += '<span class="cd blank"></span>';
+  let monthCount = 0;
+  for (let d = 1; d <= days; d++) {
+    const key = cur.ym + '-' + p2(d), n = (plays[key] || []).length;
+    monthCount += n;
+    cells += '<button class="press cd' + (n ? ' has' : '') + (key === today ? ' today' : '') + (key === cur.sel ? ' sel' : '') + '" data-day="' + key + '">' +
+      '<span class="dn">' + d + '</span><span class="dots">' + (n ? '<i></i>'.repeat(Math.min(n, 3)) : '') + '</span></button>';
+  }
+  const sel = cur.sel && plays[cur.sel] ? plays[cur.sel] : [];
+  const list = cur.sel ? (sel.length
+    ? '<p class="sub-note" style="margin:16px 4px 10px">' + fmtDate(cur.sel) + ' · ' + sel.length + '개</p><div class="list">' + sel.map(function(it){
+        const r = getRecord(it.b.id, it.t.id);
+        return '<button class="glass press rank" data-rb="' + esc(it.b.id) + '" data-rt="' + esc(it.t.id) + '"><span class="txt"><span class="nm">' + esc(it.t.name) +
+          '</span><span class="br">' + esc(it.b.name) + '</span></span>' + (r.difficulty ? '<span class="st">' + starsRow(r.difficulty) + '</span>' : '') + '</button>';
+      }).join('') + '</div>'
+    : '<p class="sub-note" style="margin:16px 4px 0">' + fmtDate(cur.sel) + ' · 플레이 기록이 없어요</p>') : '';
+  return topBar('') + '<h1 class="page-title">캘린더</h1>' +
+    '<section class="glass cal"><div class="cal-head"><button class="press" data-cal="prev" aria-label="이전 달">‹</button>' +
+    '<button class="press cal-ttl" data-cal="today">' + y + '년 ' + mo + '월<small>' + (monthCount ? ' · ' + monthCount + '개' : '') + '</small></button>' +
+    '<button class="press" data-cal="next" aria-label="다음 달">›</button></div>' +
+    '<div class="cal-grid dow">' + ['일', '월', '화', '수', '목', '금', '토'].map((w, i) => '<span class="' + (i === 0 ? 'sun' : i === 6 ? 'sat' : '') + '">' + w + '</span>').join('') + '</div>' +
+    '<div class="cal-grid">' + cells + '</div></section>' + list;
+}
+
 function rankView(){
   const list = rankedThemes();
   const medal = n => n === 1 ? ' gold' : n === 2 ? ' silver' : n === 3 ? ' bronze' : '';
   const attrs = it => ' data-rb="' + esc(it.b.id) + '" data-rt="' + esc(it.t.id) + '"';
   const photo = it => posterCache[it.b.id + '/' + it.t.id] || getRecord(it.b.id, it.t.id).poster || it.t.image || '';
-  const names = it => '<span class="nm">' + esc(it.t.name) + '</span><span class="br">' + esc(it.b.name) + '</span>';
+  const names = it => { const d = getRecord(it.b.id, it.t.id).playDate; return '<span class="nm">' + esc(it.t.name) + '</span><span class="br">' + esc(it.b.name) + (d ? ' · ' + fmtDate(d) : '') + '</span>'; };
   if (!list.length) {
     return topBar('') + '<h1 class="page-title">순위표</h1><p class="sub-note">별점 높은 순 · 같은 별점은 공동 순위</p>' +
       '<div class="glass empty">아직 별점을 준 테마가 없어요<br>테마에서 별점을 남기면 순위가 나와요</div>';
@@ -501,6 +569,7 @@ function gradRankView(){
   return head + '<div class="list">' + top + '</div>' + (rest ? '<div class="list">' + rest + '</div>' : '');
 }
 
+
 function homeView(){
   return topBar('<button class="glass press back-btn pill" data-act="backup">백업</button>' + plusBtn('add-brand', '회사 추가')) +
     '<div class="home"><h1>기록</h1><div class="list">' +
@@ -553,6 +622,9 @@ function themeView(brand, theme){
       '<div class="info">' +
         '<h2>' + esc(theme.name) + '</h2>' +
         '<button class="check" id="check" role="checkbox" aria-checked="' + r.played + '"><span class="box"></span>플레이 완료</button>' +
+        '<div class="date-row"><label class="date-wrap' + (r.playDate ? '' : ' empty') + '"><span id="dateBtn">' + fmtDate(r.playDate) + '</span>' +
+          '<input type="date" id="dateInput" value="' + esc(r.playDate || '') + '" max="9999-12-31" aria-label="플레이 날짜 정하기"></label>' +
+          '<button class="date-x" id="dateX" data-act="dateclear" aria-label="날짜 지우기"' + (r.playDate ? '' : ' hidden') + '>×</button></div>' +
         '<div><div class="lbl">별점<b id="starVal"' + (r.difficulty ? '' : ' class="hint"') + '>' + fmtStar(r.difficulty) + '</b></div>' +
           '<button class="rate-btn" id="cardStars" data-act="rate" aria-label="별점 정하기">' + starsRow(r.difficulty) + '</button></div>' +
       '</div>' +
@@ -572,6 +644,7 @@ function render(isBack, still){
   else if (cur.view === 'rank') html = rankView();
   else if (cur.view === 'grad' && brand && brandDone(brand)) html = gradView(brand);
   else if (cur.view === 'gradrank') html = gradRankView();
+  else if (cur.view === 'cal') html = calView(cur);
   else { stack = [{ view:'home' }]; html = homeView(); }   // 예외 시 항상 첫 화면으로 복구
 
   app.innerHTML = '<div class="view' + (isBack ? ' back' : '') + (still ? ' still' : '') + '">' + html + '</div>';
@@ -612,6 +685,18 @@ app.addEventListener('click', function(e){
   const cur = stack[stack.length - 1];
 
   if (t.dataset.act === 'back') return goBack();
+  if (t.dataset.cal || t.dataset.day) {
+    if (t.dataset.day) cur.sel = t.dataset.day === cur.sel ? '' : t.dataset.day;
+    else {
+      const now = todayStr();
+      let y = Number((cur.ym || now).slice(0, 4)), m = Number((cur.ym || now).slice(5, 7));
+      if (t.dataset.cal === 'prev') m--; else if (t.dataset.cal === 'next') m++; else { y = Number(now.slice(0, 4)); m = Number(now.slice(5, 7)); cur.sel = now; }
+      if (m < 1) { m = 12; y--; } else if (m > 12) { m = 1; y++; }
+      cur.ym = y + '-' + String(m).padStart(2, '0');
+      if (t.dataset.cal !== 'today') cur.sel = '';
+    }
+    return render(false, true);
+  }
   if (t.dataset.act === 'rmposter') { removePoster(cur.brand, cur.theme); return refreshPoster(); }
   if (t.dataset.act === 'add-brand') return openSheet('회사 추가', '회사 이름', addBrand);
   if (t.dataset.act === 'backup') return openMenu('백업', [
@@ -622,6 +707,7 @@ app.addEventListener('click', function(e){
   if (t.dataset.act === 'brand-plus') return openBrandPlusMenu(cur.brand);
   if (t.dataset.act === 'menu') return openDrawer();
   if (t.dataset.act === 'rate') return openRating(cur.brand, cur.theme);
+  if (t.dataset.act === 'dateclear') return saveDate('');
   if (t.dataset.act === 'graderate') return openGradRating(cur.brand);
   if (t.dataset.act === 'gradpick') return openGradPick(cur.brand, t.dataset.slot);
   if (t.dataset.act === 'rmgradphoto') { removePoster('grad', cur.brand); return refreshGradPhoto(); }
@@ -1100,6 +1186,34 @@ function openRatingSheet(title, initial, onDone){
   set(v);
 }
 
+/* 플레이 날짜: 'YYYY-MM-DD'로 저장하고 화면에는 2026/10/25 형태로 작게 보여줍니다 */
+function fmtDate(d){ return /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d.replace(/-/g, '/') : '날짜 선택'; }
+function todayStr(){
+  const n = new Date(), p = x => String(x).padStart(2, '0');
+  return n.getFullYear() + '-' + p(n.getMonth() + 1) + '-' + p(n.getDate());
+}
+function saveDate(v){
+  const cur = stack[stack.length - 1];
+  v = /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : '';
+  if (!setRecord(cur.brand, cur.theme, { playDate:v })) alert('저장 공간이 부족해서 이번에만 보여요');
+  const txt = document.getElementById('dateBtn'), inp = document.getElementById('dateInput'), x = document.getElementById('dateX');
+  if (txt) { txt.textContent = fmtDate(v); txt.parentNode.classList.toggle('empty', !v); }
+  if (inp && inp.value !== v) inp.value = v;
+  if (x) x.hidden = !v;
+}
+/* 날짜 글자 위에 투명한 날짜 칸이 겹쳐 있어서, 누르면 바로 기기의 캘린더가 열립니다 */
+app.addEventListener('change', function(e){ if (e.target && e.target.id === 'dateInput') saveDate(e.target.value); });
+/* 날짜 칸을 누르면 별점 창처럼 배경이 살짝 어두워지고, 캘린더가 닫히면 돌아옵니다 */
+function dateDim(on){
+  let d = document.getElementById('dateDim');
+  if (on && !d) { d = document.createElement('div'); d.id = 'dateDim'; d.className = 'date-dim'; document.body.appendChild(d); }
+  else if (!on && d) { d.classList.add('out'); setTimeout(function(){ if (d.parentNode) d.remove(); }, 200); }
+}
+app.addEventListener('focusin', function(e){ if (e.target && e.target.id === 'dateInput') dateDim(true); });
+app.addEventListener('focusout', function(e){ if (e.target && e.target.id === 'dateInput') dateDim(false); });
+app.addEventListener('change', function(e){ if (e.target && e.target.id === 'dateInput') setTimeout(function(){ dateDim(false); }, 250); });
+document.addEventListener('pointerdown', function(e){ if (document.getElementById('dateDim') && !(e.target && e.target.id === 'dateInput')) dateDim(false); }, true);
+
 function openRating(b, t){
   const brand = findBrand(b);
   const theme = brand && brand.themes.find(x => x.id === t);
@@ -1139,7 +1253,8 @@ function openDrawer(){
   el.innerHTML = '<div class="glass drawer"><h3>기록</h3>' +
     '<button class="press' + (cur === 'home' ? ' on' : '') + '" data-root="home">메인</button>' +
     '<button class="press' + (cur === 'rank' ? ' on' : '') + '" data-root="rank">순위표</button>' +
-    '<button class="press' + (cur === 'gradrank' ? ' on' : '') + '" data-root="gradrank">졸업 순위</button></div>';
+    '<button class="press' + (cur === 'gradrank' ? ' on' : '') + '" data-root="gradrank">졸업 순위</button>' +
+    '<button class="press' + (cur === 'cal' ? ' on' : '') + '" data-root="cal">캘린더</button></div>';
   el.addEventListener('click', function(e){
     const b = e.target.closest('button');
     if (!b && e.target !== el) return;
