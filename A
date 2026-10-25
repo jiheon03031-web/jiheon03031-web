@@ -246,7 +246,7 @@ body{ overflow-x:hidden; }
 .s1{ position:relative; display:inline-block; color:var(--off,var(--star-off)); }
 .s1 .f{ position:absolute; left:0; top:0; right:0; bottom:0; text-align:center; color:var(--on,var(--star-on)); transition:clip-path .12s ease, -webkit-clip-path .12s ease; }
 .date-dim{ position:fixed; inset:0; z-index:10; pointer-events:none; background:rgba(0,0,0,.22); animation:fade .2s ease; }
-.date-dim.out{ opacity:0; transition:opacity .2s ease; }
+.date-dim.out{ opacity:0; transition:opacity .2s ease; animation:none; }
 .cal{ padding:14px 12px 12px; border-radius:26px; }
 .cal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
 .cal-head button{ height:40px; min-width:40px; font-size:24px; line-height:1; color:var(--text); }
@@ -647,6 +647,7 @@ function render(isBack, still){
   else if (cur.view === 'cal') html = calView(cur);
   else { stack = [{ view:'home' }]; html = homeView(); }   // 예외 시 항상 첫 화면으로 복구
 
+  const dd = document.getElementById('dateDim'); if (dd) dd.remove();
   app.innerHTML = '<div class="view' + (isBack ? ' back' : '') + (still ? ' still' : '') + '">' + html + '</div>';
   if (!still) window.scrollTo(0, 0);
   document.querySelectorAll('.autosize').forEach(autosizeEl);
@@ -1203,16 +1204,31 @@ function saveDate(v){
 }
 /* 날짜 글자 위에 투명한 날짜 칸이 겹쳐 있어서, 누르면 바로 기기의 캘린더가 열립니다 */
 app.addEventListener('change', function(e){ if (e.target && e.target.id === 'dateInput') saveDate(e.target.value); });
-/* 날짜 칸을 누르면 별점 창처럼 배경이 살짝 어두워지고, 캘린더가 닫히면 돌아옵니다 */
+/* 날짜 칸을 누르면 별점 창처럼 배경이 살짝 어두워지고, 캘린더가 완전히 닫힐 때만 돌아옵니다.
+   (날짜를 돌리는 동안 생기는 change/blur에는 반응하지 않고, 한 번 만든 어두운 막을 계속 재사용해 깜박이지 않게 합니다) */
+let dimTimer = 0;
 function dateDim(on){
+  clearTimeout(dimTimer);
   let d = document.getElementById('dateDim');
-  if (on && !d) { d = document.createElement('div'); d.id = 'dateDim'; d.className = 'date-dim'; document.body.appendChild(d); }
-  else if (!on && d) { d.classList.add('out'); setTimeout(function(){ if (d.parentNode) d.remove(); }, 200); }
+  if (on) {
+    if (!d) { d = document.createElement('div'); d.id = 'dateDim'; d.className = 'date-dim'; document.body.appendChild(d); }
+    d.classList.remove('out');
+    return;
+  }
+  if (!d) return;
+  d.classList.add('out');
+  dimTimer = setTimeout(function(){ const x = document.getElementById('dateDim'); if (x && x.classList.contains('out')) x.remove(); }, 220);
 }
 app.addEventListener('focusin', function(e){ if (e.target && e.target.id === 'dateInput') dateDim(true); });
-app.addEventListener('focusout', function(e){ if (e.target && e.target.id === 'dateInput') dateDim(false); });
-app.addEventListener('change', function(e){ if (e.target && e.target.id === 'dateInput') setTimeout(function(){ dateDim(false); }, 250); });
-document.addEventListener('pointerdown', function(e){ if (document.getElementById('dateDim') && !(e.target && e.target.id === 'dateInput')) dateDim(false); }, true);
+app.addEventListener('focusout', function(e){
+  if (!e.target || e.target.id !== 'dateInput') return;
+  setTimeout(function(){ if (document.activeElement !== e.target) dateDim(false); }, 400);   // 잠깐 포커스가 옮겨가는 경우는 무시
+});
+document.addEventListener('pointerdown', function(e){
+  if (!document.getElementById('dateDim') || (e.target && e.target.id === 'dateInput')) return;
+  dateDim(false);
+  const inp = document.getElementById('dateInput'); if (inp) inp.blur();
+}, true);
 
 function openRating(b, t){
   const brand = findBrand(b);
